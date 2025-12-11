@@ -107,10 +107,14 @@ class InvoiceProcessingPipeline:
             xml_dict = TallyXMLConverter.convert_invoices_to_xml(invoices)
             
             # Save XML files
+            # Save XML files
             for invoice_num, xml_content in xml_dict.items():
+                # Sanitize invoice number for filename
+                safe_invoice_num = "".join([c if c.isalnum() or c in ('-', '_') else '_' for c in str(invoice_num)])
+                
                 xml_file = os.path.join(
                     self.xml_output_dir,
-                    f"voucher_{invoice_num}.xml"
+                    f"voucher_{safe_invoice_num}.xml"
                 )
                 with open(xml_file, 'w', encoding='utf-8') as f:
                     f.write(xml_content)
