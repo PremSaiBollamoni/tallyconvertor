@@ -130,14 +130,21 @@ def parse_vision_response(api_response: Dict) -> List[Dict]:
              
         message_content = api_response['choices'][0]['message']['content']
         
-        # Remove markdown code blocks if present
+        # Robust JSON extraction: Find the first '{' and the last '}'
         import re
-        message_content = re.sub(r'```json\n?', '', message_content)
-        message_content = re.sub(r'```\n?', '', message_content)
-        message_content = message_content.strip()
         
-        # Parse JSON
-        invoice_data = json.loads(message_content)
+        # Try to find a JSON block specifically
+        json_match = re.search(r'\{.*\}', message_content, re.DOTALL)
+        
+        if json_match:
+            json_str = json_match.group(0)
+            try:
+                invoice_data = json.loads(json_str)
+            except json.JSONDecodeError:
+                # Fallback: Validation logic or cleanup if stricter parsing needed
+                return [{"error": "Found JSON-like block but failed to parse", "content": json_str}]
+        else:
+             return [{"error": "No JSON object found in response", "content": message_content}]
         
         # If it's a list of invoices, return as is. If single dict, wrap in list
         if isinstance(invoice_data, list):
@@ -145,9 +152,9 @@ def parse_vision_response(api_response: Dict) -> List[Dict]:
         else:
             return [invoice_data]
         
-    except (KeyError, json.JSONDecodeError, IndexError) as e:
+    except (KeyError, IndexError) as e:
         return [{
-            "error": f"Failed to parse response: {str(e)}",
+            "error": f"Failed to parse response structure: {str(e)}",
             "raw_response": str(api_response)
         }]
 
