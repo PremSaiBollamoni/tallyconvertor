@@ -1,12 +1,10 @@
 [build]
-  command = "# No build command needed for static files, but we ensure dependencies are ready"
+  command = "# Static site + Python Functions"
   functions = "functions"
   publish = "."
 
 [functions]
-  node_bundler = "esbuild" 
-  # Important: Include logic files from root so the function can import them
-  included_files = ["*.py", "config.json"]
+  # Default settings are sufficient now that files are inside the functions directory
 
 [[redirects]]
   from = "/api/*"
@@ -19,7 +17,6 @@
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
 
-# Block access to source code files for security
 [[redirects]]
   from = "/*.py"
   to = "/404.html"

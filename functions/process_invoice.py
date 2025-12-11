@@ -5,20 +5,13 @@ import json
 import base64
 import tempfile
 
-# Add root directory to path to allow importing local modules
-current_dir = os.path.dirname(os.path.realpath(__file__))
-root_dir = os.path.dirname(current_dir)
-sys.path.append(root_dir)
-
+# Files are now local in the same directory (self-contained function)
 try:
     from pipeline import InvoiceProcessingPipeline
 except ImportError:
-    # Fallback for local testing or if path is different
-    sys.path.append(os.path.join(os.getcwd()))
-    try:
-        from pipeline import InvoiceProcessingPipeline
-    except ImportError:
-        pass 
+    # Fallback/Debug
+    print("Could not import pipeline from local directory")
+    raise
 
 def handler(event, context):
     print("Received event")
@@ -102,25 +95,3 @@ def handler(event, context):
                 'trace': traceback.format_exc()
             })
         }
-
-if __name__ == "__main__":
-    # Local Test
-    print("Running local test...")
-    sample_img = os.path.join(root_dir, "invoice_sample.png")
-    if os.path.exists(sample_img):
-        with open(sample_img, "rb") as f:
-            b64_data = base64.b64encode(f.read()).decode('utf-8')
-        
-        event = {
-            "httpMethod": "POST",
-            "body": json.dumps({
-                "image": b64_data,
-                "filename": "test_invoice.png"
-            })
-        }
-        
-        response = handler(event, None)
-        print("\nResponse Status:", response['statusCode'])
-        print("Response Body Snippet:", response['body'][:200])
-    else:
-        print("invoice_sample.png not found for testing")
