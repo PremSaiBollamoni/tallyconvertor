@@ -6,8 +6,8 @@ from typing import Dict, List, Optional, Union
 
 API_KEY = "sGnexJYRzOzcMH3x2Rzg9CusBH11poeO"
 DEEPINFRA_ENDPOINT = "https://api.deepinfra.com/v1/openai/chat/completions"
-# Use a valid, standard Vision model
-MODEL = "meta-llama/Llama-3.2-11B-Vision-Instruct"
+# User requested specific model
+MODEL = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
 
 
 def encode_image(image_path: str) -> str:
@@ -52,17 +52,17 @@ def extract_invoice_data(image_paths: List[str]) -> Dict:
         - invoice_number
         - invoice_date (DD-MM-YYYY format)
         - customer_name
-        - total_amount
+        - total_amount (Number only, NO COMMAS)
         - currency
-        - igst_amount (Total Integrated Tax)
-        - cgst_amount (Total Central Tax)
-        - sgst_amount (Total State Tax)
+        - igst_amount (Total Integrated Tax, Number only, NO COMMAS)
+        - cgst_amount (Total Central Tax, Number only, NO COMMAS)
+        - sgst_amount (Total State Tax, Number only, NO COMMAS)
         - items: List of items, each containing:
             - item_name
             - quantity (number)
             - uom (Unit of Measurement e.g., Nos, Kgs, Box)
-            - rate (unit price)
-            - amount (line total)
+            - rate (unit price, Number only, NO COMMAS)
+            - amount (line total, Number only, NO COMMAS)
             - hsn_code (if available)
 
         JSON Structure:
@@ -70,23 +70,26 @@ def extract_invoice_data(image_paths: List[str]) -> Dict:
             "invoice_number": "...",
             "invoice_date": "...",
             "customer_name": "...",
-            "total_amount": 0.0,
-            "igst_amount": 0.0,
-            "cgst_amount": 0.0,
-            "sgst_amount": 0.0,
+            "total_amount": 0.00,
+            "igst_amount": 0.00,
+            "cgst_amount": 0.00,
+            "sgst_amount": 0.00,
             "items": [
                 {
                     "item_name": "...",
                     "quantity": 0,
                     "uom": "...",
-                    "rate": 0.0,
-                    "amount": 0.0,
+                    "rate": 0.00,
+                    "amount": 0.00,
                     "hsn_code": "..."
                 }
             ]
         }
         
-        Only return valid JSON, no additional text."""
+        IMPORTANT: 
+        1. Return ONLY valid JSON.
+        2. Do NOT use commas in numbers (e.g., use 1500.00, NOT 1,500.00).
+        """
     })
 
     payload = {
@@ -138,6 +141,11 @@ def parse_vision_response(api_response: Dict) -> List[Dict]:
         
         if json_match:
             json_str = json_match.group(0)
+            
+            # SANITIZATION: Remove commas from numbers to fix "74,900.00" errors
+            # Look for digit comma digit pattern and remove the comma
+            json_str = re.sub(r'(\d),(\d)', r'\1\2', json_str)
+            
             try:
                 invoice_data = json.loads(json_str)
             except json.JSONDecodeError:
