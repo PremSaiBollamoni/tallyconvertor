@@ -1,4 +1,5 @@
 streamlit==1.28.1
 requests==2.31.0
-Pillow==10.1.0
+# Pin Pillow to 9.5.0 to avoid building from source on some cloud builders
+Pillow==9.5.0
 python-dotenv==1.0.0
