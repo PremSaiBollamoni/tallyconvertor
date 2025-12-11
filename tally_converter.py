@@ -12,8 +12,6 @@ class TallyXMLConverter:
     def create_tally_voucher(invoice_data: Dict) -> str:
         """
         Convert invoice JSON to Tally import XML that TallyPrime accepts.
-
-        Uses the IMPORTDATA -> REQUESTDATA -> TALLYMESSAGE -> VOUCHER structure.
         """
         root = ET.Element('ENVELOPE')
 
@@ -41,18 +39,16 @@ class TallyXMLConverter:
         voucher.set('ACTION', 'Create')
 
         # Core fields
-        # TallyPrime commonly expects DATE/VOUCHERDATE in DD MM YYYY format
-        # Provide multiple date representations to satisfy different Tally import expectations
         date_ddmmyyyy = TallyXMLConverter._parse_date(invoice_data.get('invoice_date', ''))
         date_yyyymmdd = TallyXMLConverter._parse_date_numeric(invoice_data.get('invoice_date', ''))
 
-        # <DATE> as numeric (YYYYMMDD) and <VOUCHERDATE>/<EFFECTIVEDATE> as DD MM YYYY
         date_el = ET.SubElement(voucher, 'DATE')
         date_el.text = date_yyyymmdd
 
         vch_date_el = ET.SubElement(voucher, 'VOUCHERDATE')
         vch_date_el.text = date_ddmmyyyy
-
+        
+        # Proper effective date
         eff_date_el = ET.SubElement(voucher, 'EFFECTIVEDATE')
         eff_date_el.text = date_ddmmyyyy
 
@@ -64,46 +60,63 @@ class TallyXMLConverter:
 
         party = ET.SubElement(voucher, 'PARTYLEDGERNAME')
         party.text = invoice_data.get('customer_name', 'Unknown')
-
+        
+        # Narration
         narration = ET.SubElement(voucher, 'NARRATION')
-        narration.text = f"Imported via Tally Connector - Invoice {invoice_data.get('invoice_number', '')}"
+        narration.text = f"Inv: {invoice_data.get('invoice_number', '')} | Total: {invoice_data.get('total_amount', 0)}"
 
-        # Ledger entries (ALLLEDGERENTRIES.LIST)
-        amount_value = TallyXMLConverter._parse_amount(invoice_data.get('amount', '0'))
+        # --- LEDGER ENTRIES ---
+        
+        # 1. Party Ledger (Debit total amount)
+        total_amt = TallyXMLConverter._parse_amount(invoice_data.get('total_amount', '0'))
+        
+        ledger_party = ET.SubElement(voucher, 'ALLLEDGERENTRIES.LIST')
+        ET.SubElement(ledger_party, 'LEDGERNAME').text = invoice_data.get('customer_name', 'Unknown')
+        ET.SubElement(ledger_party, 'ISDEEMEDPOSITIVE').text = 'Yes' # Debit
+        ET.SubElement(ledger_party, 'AMOUNT').text = f"-{total_amt:.2f}"
 
-        # Customer ledger entry (debit/negative)
-        ledger1 = ET.SubElement(voucher, 'ALLLEDGERENTRIES.LIST')
-        ledgername1 = ET.SubElement(ledger1, 'LEDGERNAME')
-        ledgername1.text = invoice_data.get('customer_name', 'Unknown')
-        amt1 = ET.SubElement(ledger1, 'AMOUNT')
-        # Tally expects negative amount for debit side in this layout (prefix '-')
-        amt1.text = f"-{amount_value:.2f}"
+        # 2. Sales Ledger (Credit item total - excluding tax)
+        # Calculate base amount = Sum of line items
+        items = invoice_data.get('items', [])
+        base_total = 0.0
+        for item in items:
+            base_total += TallyXMLConverter._parse_amount(item.get('amount', 0))
+            
+        ledger_sales = ET.SubElement(voucher, 'ALLLEDGERENTRIES.LIST')
+        ET.SubElement(ledger_sales, 'LEDGERNAME').text = 'Sales'
+        ET.SubElement(ledger_sales, 'ISDEEMEDPOSITIVE').text = 'No' # Credit
+        ET.SubElement(ledger_sales, 'AMOUNT').text = f"{base_total:.2f}"
+        
+        # 3. Tax Ledgers (Credit)
+        for tax_type in ['igst', 'cgst', 'sgst']:
+            tax_amt = TallyXMLConverter._parse_amount(invoice_data.get(f'{tax_type}_amount', 0))
+            if tax_amt > 0:
+                ledger_tax = ET.SubElement(voucher, 'ALLLEDGERENTRIES.LIST')
+                ET.SubElement(ledger_tax, 'LEDGERNAME').text = tax_type.upper() # IGST / CGST / SGST
+                ET.SubElement(ledger_tax, 'ISDEEMEDPOSITIVE').text = 'No'
+                ET.SubElement(ledger_tax, 'AMOUNT').text = f"{tax_amt:.2f}"
 
-        # Sales ledger entry (credit/positive)
-        ledger2 = ET.SubElement(voucher, 'ALLLEDGERENTRIES.LIST')
-        ledgername2 = ET.SubElement(ledger2, 'LEDGERNAME')
-        ledgername2.text = 'Sales'
-        amt2 = ET.SubElement(ledger2, 'AMOUNT')
-        amt2.text = f"{amount_value:.2f}"
-
-        # Inventory entries (optional)
-        if 'items' in invoice_data and invoice_data['items']:
-            for item in invoice_data['items']:
+        # --- INVENTORY ENTRIES ---
+        if items:
+            for item in items:
                 inv = ET.SubElement(voucher, 'ALLINVENTORYENTRIES.LIST')
-                stockitem = ET.SubElement(inv, 'STOCKITEMNAME')
-                stockitem.text = item.get('description', 'Item')
-
-                # ACTUALQTY: Tally often expects quantity with unit (e.g., 3.00 Nos)
-                # Keep it simple here as a plain number; adjust if you have units in your company config
-                qty = ET.SubElement(inv, 'ACTUALQTY')
-                qty.text = str(item.get('quantity', 1))
-
-                rate = ET.SubElement(inv, 'RATE')
-                try:
-                    rate_val = float(str(item.get('unit_price', '0')).replace(',', ''))
-                except Exception:
-                    rate_val = 0.0
-                rate.text = f"{rate_val:.2f}"
+                ET.SubElement(inv, 'STOCKITEMNAME').text = item.get('item_name', 'Item')
+                
+                qty = item.get('quantity', 0)
+                uom = item.get('uom', '')
+                rate = item.get('rate', 0)
+                amount = item.get('amount', 0)
+                
+                # Format: "10 Nos"
+                ET.SubElement(inv, 'ACTUALQTY').text = f"{qty} {uom}".strip()
+                ET.SubElement(inv, 'BILLEDQTY').text = f"{qty} {uom}".strip()
+                
+                # Format: "100.00/Nos" if UOM exists, else just "100.00"
+                rate_str = f"{rate}"
+                if uom:
+                    rate_str += f"/{uom}"
+                ET.SubElement(inv, 'RATE').text = rate_str
+                ET.SubElement(inv, 'AMOUNT').text = f"{amount}"
 
         # Convert to pretty XML string
         xml_str = minidom.parseString(ET.tostring(root, encoding='utf-8')).toprettyxml(indent="  ")

@@ -9,7 +9,7 @@ import sys
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Union
 
 from invoice_extractor import process_invoice_image
 from tally_converter import TallyXMLConverter, save_xml_files
@@ -49,20 +49,28 @@ class InvoiceProcessingPipeline:
         ext = Path(file_path).suffix.lower()
         return ext in self.SUPPORTED_FORMATS
     
-    def process_single_invoice(self, image_path: str) -> Dict:
+    def process_single_invoice(self, image_input: Union[str, List[str]]) -> Dict:
         """
-        Process a single invoice image.
+        Process a single invoice (which may consist of multiple pages/images).
         
         Args:
-            image_path: Path to invoice image
+            image_input: Path to invoice image OR List of paths (multi-page)
             
         Returns:
             Dictionary with processing results
         """
-        logger.info(f"Processing: {image_path}")
+        # Normalize to list
+        if isinstance(image_input, str):
+            image_paths = [image_input]
+        else:
+            image_paths = image_input
+
+        # Use first page name for identification
+        main_file_path = image_paths[0]
+        logger.info(f"Processing invoice (Pages: {len(image_paths)}): {main_file_path}...")
         
         result = {
-            "file": image_path,
+            "file": main_file_path,
             "status": "pending",
             "extracted_data": None,
             "tally_xml": None,
@@ -70,16 +78,14 @@ class InvoiceProcessingPipeline:
         }
         
         try:
-            # Validate file format
-            if not self.is_supported_format(image_path):
-                raise ValueError(f"Unsupported file format: {image_path}")
+            # Validate files
+            for path in image_paths:
+                if not os.path.exists(path):
+                    raise FileNotFoundError(f"File not found: {path}")
             
-            if not os.path.exists(image_path):
-                raise FileNotFoundError(f"File not found: {image_path}")
-            
-            # Step 1: Extract invoice data from image
-            logger.info(f"  [1/3] Extracting data via Vision API...")
-            invoices = process_invoice_image(image_path)
+            # Step 1: Extract invoice data from image(s)
+            logger.info(f"  [1/3] Extracting data via Vision API from {len(image_paths)} page(s)...")
+            invoices = process_invoice_image(image_paths)
             
             if not invoices or (invoices and 'error' in invoices[0]):
                 raise Exception(f"Failed to extract invoice data: {invoices}")
@@ -91,7 +97,7 @@ class InvoiceProcessingPipeline:
             logger.info(f"  [2/3] Converting to Tally XML...")
             json_file = os.path.join(
                 self.json_output_dir,
-                f"{Path(image_path).stem}_extracted.json"
+                f"{Path(main_file_path).stem}_extracted.json"
             )
             with open(json_file, 'w') as f:
                 json.dump(invoices, f, indent=2)
@@ -116,7 +122,7 @@ class InvoiceProcessingPipeline:
             return result
             
         except Exception as e:
-            logger.error(f"  ERROR processing {image_path}: {str(e)}")
+            logger.error(f"  ERROR processing {main_file_path}: {str(e)}")
             result["status"] = "failed"
             result["error"] = str(e)
             return result

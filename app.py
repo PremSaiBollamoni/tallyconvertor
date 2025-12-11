@@ -95,105 +95,127 @@ with st.sidebar:
 
 # --- MAIN APP LOGIC ---
 
+
+# --- MAIN APP LOGIC ---
+
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
-    st.subheader("📤 Upload Invoice")
-    uploaded_file = st.file_uploader("Drop your invoice image or PDF here", type=['png', 'jpg', 'jpeg', 'pdf'])
+    st.subheader("📤 Upload Invoice(s)")
+    uploaded_files = st.file_uploader("Drop invoice images or PDFs", 
+                                    type=['png', 'jpg', 'jpeg', 'pdf'], 
+                                    accept_multiple_files=True)
 
-    if uploaded_file is not None:
-        # Handle Preview
-        if uploaded_file.type == "application/pdf":
-            # Convert first page of PDF to image for preview & processing
-            with fitz.open(stream=uploaded_file.getvalue(), filetype="pdf") as doc:
-                page = doc.load_page(0)  # load first page
-                pix = page.get_pixmap()
-                img_data = pix.tobytes("png")
-                # Convert to PIL Image for display
-                image = Image.open(io.BytesIO(img_data))
-                st.image(image, caption="PDF Preview (First Page)", use_column_width=True)
-                
-                # Prepare data for processing (we'll save the converted image)
-                process_data = img_data
-                process_filename = Path(uploaded_file.name).stem + ".png"
-        else:
-            # Standard Image
-            st.image(uploaded_file, caption="Invoice Preview", use_column_width=True)
-            process_data = uploaded_file.getvalue()
-            process_filename = uploaded_file.name
+    if uploaded_files:
+        st.success(f"{len(uploaded_files)} file(s) uploaded")
         
         # Process Button
-        if st.button("🚀 Process Invoice", type="primary"):
-            with st.spinner("Analyzing document with AI..."):
-                try:
-                    # Save to temp file
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(process_filename).suffix) as tmp_file:
-                        tmp_file.write(process_data)
-                        tmp_path = tmp_file.name
-
-                    # Initialize Pipeline
-                    with tempfile.TemporaryDirectory() as output_dir:
-                        pipeline = InvoiceProcessingPipeline(output_dir=output_dir)
+        if st.button("🚀 Process All Invoices", type="primary"):
+            st.session_state['all_results'] = []
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            with tempfile.TemporaryDirectory() as temp_input_dir:
+                
+                for idx, uploaded_file in enumerate(uploaded_files):
+                    status_text.text(f"Processing {uploaded_file.name} ({idx+1}/{len(uploaded_files)})...")
+                    
+                    try:
+                        # Prepare input images (List of pages)
+                        input_image_paths = []
                         
-                        # Run Extraction
-                        result = pipeline.process_single_invoice(tmp_path)
-                        
-                        # Cleanup temp input file
-                        os.unlink(tmp_path)
-
-                        if result["status"] == "success":
-                            st.session_state['result'] = result
-                            st.toast("Processing Complete!", icon="✅")
+                        if uploaded_file.type == "application/pdf":
+                            # Process PDF - Extract ALL Pages
+                            with fitz.open(stream=uploaded_file.getvalue(), filetype="pdf") as doc:
+                                for page_num in range(len(doc)):
+                                    page = doc.load_page(page_num)
+                                    pix = page.get_pixmap()
+                                    img_data = pix.tobytes("png")
+                                    
+                                    # Save page image
+                                    page_filename = f"{Path(uploaded_file.name).stem}_page{page_num+1}.png"
+                                    page_path = os.path.join(temp_input_dir, page_filename)
+                                    with open(page_path, "wb") as f:
+                                        f.write(img_data)
+                                    input_image_paths.append(page_path)
                         else:
-                            st.error(f"Processing failed: {result.get('error')}")
+                            # Process Image
+                            img_filename = uploaded_file.name
+                            img_path = os.path.join(temp_input_dir, img_filename)
+                            with open(img_path, "wb") as f:
+                                f.write(uploaded_file.getvalue())
+                            input_image_paths.append(img_path)
 
-                except Exception as e:
-                    st.error(f"An unexpected error occurred: {str(e)}")
+                        # Initialize Pipeline & Process
+                        # We use a persistent output dir for the session if needed, 
+                        # but for now temp dir per batch is fine as we read results immediately
+                        with tempfile.TemporaryDirectory() as output_dir:
+                            pipeline = InvoiceProcessingPipeline(output_dir=output_dir)
+                            
+                            # process_single_invoice now accepts List[str]
+                            result = pipeline.process_single_invoice(input_image_paths)
+                            
+                            # Add original filename for reference
+                            result['original_filename'] = uploaded_file.name
+                            st.session_state['all_results'].append(result)
+                            
+                    except Exception as e:
+                        st.error(f"Error processing {uploaded_file.name}: {e}")
+                    
+                    progress_bar.progress((idx + 1) / len(uploaded_files))
+            
+            status_text.text("Processing Complete! ✅")
 
 
 with col2:
     st.subheader("📊 Extraction Results")
     
-    if 'result' in st.session_state:
-        result = st.session_state['result']
-        extracted_data = result['extracted_data']
-        tally_xml = result['tally_xml']
+    if 'all_results' in st.session_state and st.session_state['all_results']:
+        results = st.session_state['all_results']
         
-        # Tabs for JSON vs XML
-        tab_json, tab_xml = st.tabs(["JSON Data", "Tally XML"])
+        # Selector for multiple invoices
+        invoice_options = [f"{r['original_filename']} ({r['status']})" for r in results]
+        selected_option = st.selectbox("Select Invoice to View", invoice_options)
         
-        with tab_json:
-            st.json(extracted_data)
+        # Find selected result
+        selected_index = invoice_options.index(selected_option)
+        result = results[selected_index]
+        
+        if result['status'] == 'success':
+            extracted_data = result['extracted_data']
+            tally_xml = result['tally_xml']
             
-            # Download JSON
-            json_str = json.dumps(extracted_data, indent=2)
-            st.download_button(
-                label="📥 Download JSON",
-                data=json_str,
-                file_name="invoice_data.json",
-                mime="application/json"
-            )
+            # Show summary metrics
+            if extracted_data:
+                inv = extracted_data[0]
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Invoice #", inv.get('invoice_number', 'N/A'))
+                m2.metric("Date", inv.get('invoice_date', 'N/A'))
+                m3.metric("Total", f"{inv.get('currency', '')} {inv.get('total_amount', 0)}")
+            
+            # Tabs for details
+            tab_json, tab_xml = st.tabs(["JSON Data", "Tally XML"])
+            
+            with tab_json:
+                st.json(extracted_data)
+                json_str = json.dumps(extracted_data, indent=2)
+                st.download_button("📥 Download JSON", json_str, f"invoice_{selected_index}.json", "application/json")
 
-        with tab_xml:
-            if tally_xml:
-                # Combine XMLs if multiple
-                full_xml = "\n".join(tally_xml.values())
-                st.code(full_xml, language="xml")
-                
-                # Download XML
-                st.download_button(
-                    label="📥 Download Tally XML",
-                    data=full_xml,
-                    file_name="tally_import.xml",
-                    mime="application/xml"
-                )
-            else:
-                st.info("No XML generated.")
+            with tab_xml:
+                if tally_xml:
+                    full_xml = "\n".join(tally_xml.values())
+                    st.code(full_xml, language="xml")
+                    st.download_button("📥 Download XML", full_xml, f"voucher_{selected_index}.xml", "application/xml")
+                else:
+                    st.warning("No XML generated")
+        else:
+            st.error(f"Processing Failed: {result.get('error')}")
+            
     else:
-        st.info("Upload an invoice and click Process to see results here.")
-        # Placeholder visual
+        st.info("Upload invoices and click Process to start.")
         st.markdown("""
         <div style="text-align: center; padding: 40px; color: #64748b; border: 2px dashed #334155; border-radius: 12px;">
-            Waiting for data...
+            Waiting for uploads...
         </div>
         """, unsafe_allow_html=True)
