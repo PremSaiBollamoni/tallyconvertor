@@ -45,50 +45,43 @@ def extract_invoice_data(image_paths: List[str]) -> Dict:
     # 2. Add the extraction prompt
     content_list.append({
         "type": "text",
-        "text": """Extract the following invoice information and return as JSON.
-        If the invoice spans multiple pages, combine the data into a single invoice record.
+        "text": """Analyze the invoice image(s).
         
-        Fields required:
-        - invoice_number
-        - invoice_date (DD-MM-YYYY format)
-        - customer_name
-        - total_amount (Number only, NO COMMAS)
-        - currency
-        - igst_amount (Total Integrated Tax, Number only, NO COMMAS)
-        - cgst_amount (Total Central Tax, Number only, NO COMMAS)
-        - sgst_amount (Total State Tax, Number only, NO COMMAS)
-        - items: List of items, each containing:
-            - item_name
-            - quantity (number)
-            - uom (Unit of Measurement e.g., Nos, Kgs, Box)
-            - rate (unit price, Number only, NO COMMAS)
-            - amount (line total, Number only, NO COMMAS)
-            - hsn_code (if available)
-
-        JSON Structure:
+        CRITICAL INSTRUCTIONS:
+        1. **Batch Mode**: If the images contain MULTIPLE DISTINCT invoices, return a JSON LIST of invoice objects (e.g., `[ {inv1}, {inv2} ]`).
+        2. **Multi-Page Mode**: If the images are pages of the SAME invoice, combine them into a SINGLE invoice object.
+        3. **Extraction Order**: 
+           - FIRST: Locate the Invoice Number, Date, and Customer Name.
+           - SECOND: Locate the Total Amount and Tax Totals (IGST/CGST/SGST).
+           - THIRD: Extract the line items (Quantity, Rate, UOM, HSN).
+        
+        REQUIRED JSON STRUCTURE (for each invoice):
         {
-            "invoice_number": "...",
-            "invoice_date": "...",
-            "customer_name": "...",
-            "total_amount": 0.00,
-            "igst_amount": 0.00,
-            "cgst_amount": 0.00,
-            "sgst_amount": 0.00,
+            "invoice_number": "String (Required - Look for 'Invoice No', 'Bill No', 'Voucher No')",
+            "invoice_date": "String (DD-MM-YYYY)",
+            "customer_name": "String",
+            "total_amount": Number (No commas, e.g. 1250.00),
+            "currency": "String",
+            "igst_amount": Number (No commas, default 0.00),
+            "cgst_amount": Number (No commas, default 0.00),
+            "sgst_amount": Number (No commas, default 0.00),
             "items": [
                 {
-                    "item_name": "...",
-                    "quantity": 0,
-                    "uom": "...",
-                    "rate": 0.00,
-                    "amount": 0.00,
-                    "hsn_code": "..."
+                    "item_name": "String",
+                    "quantity": Number (default 1),
+                    "uom": "String (e.g. Nos, Kgs, Pcs, Box)",
+                    "rate": Number (No commas),
+                    "amount": Number (No commas),
+                    "hsn_code": "String"
                 }
             ]
         }
         
-        IMPORTANT: 
-        1. Return ONLY valid JSON.
-        2. Do NOT use commas in numbers (e.g., use 1500.00, NOT 1,500.00).
+        RULES:
+        - Return ONLY valid JSON.
+        - Do NOT use commas in numeric values.
+        - If a field is missing, use null or 0.00.
+        - **IMPORTANT**: Do NOT just return a list of items. You MUST wrap them in the 'items' field of the invoice object.
         """
     })
 
