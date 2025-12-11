@@ -34,8 +34,6 @@ What was delivered
   - json/ — extracted JSON files (e.g., invoice_sample_extracted.json)
   - xml/ — Tally XML files (e.g., voucher_IN-001.xml)
   - processing_report.txt — summary report of runs
-- COMPLETION_REPORT.txt, QUICK_START.txt — reports and quick instructions.
-
 
 How to run (quick)
 
@@ -94,11 +92,3 @@ Suggested next steps (Day 2+)
 - Add retries and rate-limit handling for the API.
 - Add persistent logging (file-based) or a small database for audit trails.
 - Build a small web dashboard for monitoring runs and manual correction UI.
-
-
-Contact & Notes
-
-If you want the document in true .docx format, I can generate one (requires python-docx) or I can provide the same text formatted for copy-paste into Word. If you prefer I can also remove any remaining .md files now — I recreated an `INDEX.md` earlier as a quick navigation file; tell me if you want it removed.
-
-
-End of summary
