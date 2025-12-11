@@ -133,32 +133,56 @@ def parse_vision_response(api_response: Dict) -> List[Dict]:
              
         message_content = api_response['choices'][0]['message']['content']
         
-        # Robust JSON extraction: Find the first '{' and the last '}'
-        import re
-        
-        # Try to find a JSON block specifically
-        json_match = re.search(r'\{.*\}', message_content, re.DOTALL)
-        
-        if json_match:
-            json_str = json_match.group(0)
-            
-            # SANITIZATION: Remove commas from numbers to fix "74,900.00" errors
+        # Helper to parse string with sanitization
+        def try_parse(json_str):
+            # SANITIZATION: Remove commas from numbers
             # Look for digit comma digit pattern and remove the comma
-            json_str = re.sub(r'(\d),(\d)', r'\1\2', json_str)
-            
+            # e.g. 74,900.00 -> 74900.00
+            clean_str = re.sub(r'(\d),(\d)', r'\1\2', json_str)
+            return json.loads(clean_str)
+
+        import re
+        import json
+
+        # Strategy 1: Look for a generic JSON list [...]
+        list_match = re.search(r'\[.*\]', message_content, re.DOTALL)
+        if list_match:
             try:
-                invoice_data = json.loads(json_str)
+                data = try_parse(list_match.group(0))
+                if isinstance(data, list):
+                    return data
             except json.JSONDecodeError:
-                # Fallback: Validation logic or cleanup if stricter parsing needed
-                return [{"error": "Found JSON-like block but failed to parse", "content": json_str}]
-        else:
-             return [{"error": "No JSON object found in response", "content": message_content}]
-        
-        # If it's a list of invoices, return as is. If single dict, wrap in list
-        if isinstance(invoice_data, list):
-            return invoice_data
-        else:
-            return [invoice_data]
+                pass # Fall through to other strategies
+
+        # Strategy 2: Look for a generic JSON object {...} (or sequence of objects)
+        # Note: This greedy match captures {obj1}, {obj2}
+        obj_match = re.search(r'\{.*\}', message_content, re.DOTALL)
+        if obj_match:
+            json_candidate = obj_match.group(0)
+            
+            # Attempt 1: Direct Parse (Single Object)
+            try:
+                data = try_parse(json_candidate)
+                if isinstance(data, list): return data
+                return [data]
+            except json.JSONDecodeError:
+                pass
+
+            # Attempt 2: It might be multiple objects like {A}, {B}. Try wrapping in [...]
+            try:
+                wrapped_candidate = f"[{json_candidate}]"
+                data = try_parse(wrapped_candidate)
+                if isinstance(data, list): return data
+                return [data]
+            except json.JSONDecodeError:
+                pass
+                
+            # Attempt 3: Sometimes models forget commas between objects: {A}{B} -> {A},{B}
+            # This is complex, but basic wrap is usually enough for "comma separated" failure.
+            
+            return [{"error": "Found JSON-like block but failed to parse (tried wrapping)", "content": json_candidate}]
+
+        return [{"error": "No JSON structure found", "content": message_content}]
         
     except (KeyError, IndexError) as e:
         return [{
