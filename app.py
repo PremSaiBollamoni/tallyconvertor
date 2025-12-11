@@ -5,6 +5,9 @@ import json
 import base64
 import tempfile
 from pathlib import Path
+import fitz  # PyMuPDF
+from PIL import Image
+import io
 from pipeline import InvoiceProcessingPipeline
 
 # --- CONFIGURATION & STYLING ---
@@ -96,19 +99,36 @@ col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
     st.subheader("📤 Upload Invoice")
-    uploaded_file = st.file_uploader("Drop your invoice image here", type=['png', 'jpg', 'jpeg'])
+    uploaded_file = st.file_uploader("Drop your invoice image or PDF here", type=['png', 'jpg', 'jpeg', 'pdf'])
 
     if uploaded_file is not None:
-        # Show Preview
-        st.image(uploaded_file, caption="Invoice Preview", use_column_width=True)
+        # Handle Preview
+        if uploaded_file.type == "application/pdf":
+            # Convert first page of PDF to image for preview & processing
+            with fitz.open(stream=uploaded_file.getvalue(), filetype="pdf") as doc:
+                page = doc.load_page(0)  # load first page
+                pix = page.get_pixmap()
+                img_data = pix.tobytes("png")
+                # Convert to PIL Image for display
+                image = Image.open(io.BytesIO(img_data))
+                st.image(image, caption="PDF Preview (First Page)", use_column_width=True)
+                
+                # Prepare data for processing (we'll save the converted image)
+                process_data = img_data
+                process_filename = Path(uploaded_file.name).stem + ".png"
+        else:
+            # Standard Image
+            st.image(uploaded_file, caption="Invoice Preview", use_column_width=True)
+            process_data = uploaded_file.getvalue()
+            process_filename = uploaded_file.name
         
         # Process Button
         if st.button("🚀 Process Invoice", type="primary"):
             with st.spinner("Analyzing document with AI..."):
                 try:
                     # Save to temp file
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_file:
-                        tmp_file.write(uploaded_file.getvalue())
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(process_filename).suffix) as tmp_file:
+                        tmp_file.write(process_data)
                         tmp_path = tmp_file.name
 
                     # Initialize Pipeline
