@@ -6,7 +6,8 @@ from typing import Dict, List, Optional, Union
 
 API_KEY = "sGnexJYRzOzcMH3x2Rzg9CusBH11poeO"
 DEEPINFRA_ENDPOINT = "https://api.deepinfra.com/v1/openai/chat/completions"
-MODEL = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
+# Use a valid, standard Vision model
+MODEL = "meta-llama/Llama-3.2-11B-Vision-Instruct"
 
 
 def encode_image(image_path: str) -> str:
@@ -104,11 +105,12 @@ def extract_invoice_data(image_paths: List[str]) -> Dict:
         "Content-Type": "application/json"
     }
     
+    # Increased timeout significantly for image uploads
     response = requests.post(
         DEEPINFRA_ENDPOINT,
         json=payload,
         headers=headers,
-        timeout=60 # Increased timeout for multi-page
+        timeout=120 
     )
     
     if response.status_code != 200:
@@ -123,6 +125,9 @@ def parse_vision_response(api_response: Dict) -> List[Dict]:
     """
     try:
         # Extract the message content from the API response
+        if 'choices' not in api_response or not api_response['choices']:
+             return [{"error": "Empty response from AI model", "raw": api_response}]
+             
         message_content = api_response['choices'][0]['message']['content']
         
         # Remove markdown code blocks if present
@@ -185,11 +190,13 @@ def process_invoice_image(image_input: Union[str, List[str]]) -> List[Dict]:
         print(f"✗ File error: {str(e)}")
         return [{"error": str(e)}]
     except requests.exceptions.ConnectionError as e:
-        print(f"✗ Connection error: {str(e)}")
-        return [{"error": "Unable to reach Vision API"}]
+        error_msg = f"Connection failed to DeepInfra: {str(e)}"
+        print(f"✗ {error_msg}")
+        return [{"error": error_msg}]
     except Exception as e:
-        print(f"✗ Error: {str(e)}")
-        return [{"error": str(e)}]
+        error_msg = f"Processing Error: {str(e)}"
+        print(f"✗ {error_msg}")
+        return [{"error": error_msg}]
 
 
 if __name__ == "__main__":
