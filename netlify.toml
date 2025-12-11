@@ -4,9 +4,9 @@
   publish = "."
 
 [functions]
-  # Ensure python functions are picked up
   node_bundler = "esbuild" 
-  # external_node_modules = [] # Not relevant for python
+  # Important: Include logic files from root so the function can import them
+  included_files = ["*.py", "config.json"]
 
 [[redirects]]
   from = "/api/*"
