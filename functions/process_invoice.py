@@ -6,12 +6,15 @@ import base64
 import tempfile
 
 # Files are now local in the same directory (self-contained function)
+# Files are in the same directory (self-contained)
 try:
-    from pipeline import InvoiceProcessingPipeline
+    from .pipeline import InvoiceProcessingPipeline
 except ImportError:
-    # Fallback/Debug
-    print("Could not import pipeline from local directory")
-    raise
+    try:
+        from pipeline import InvoiceProcessingPipeline
+    except ImportError:
+        print("Could not import pipeline")
+        raise
 
 def handler(event, context):
     print("Received event")

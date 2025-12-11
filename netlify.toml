@@ -1,14 +1,28 @@
 [build]
-  command = "# Static site + Python Functions"
+  command = "echo 'Building function components'"
   functions = "functions"
   publish = "."
 
 [functions]
-  # Default settings are sufficient now that files are inside the functions directory
+  node_bundler = "esbuild"
+  # Dependencies are now in functions/requirements.txt so they will be installed
 
+# 1. API Redirect - Must be first
+[[redirects]]
+  from = "/.netlify/functions/process_invoice"
+  to = "/.netlify/functions/process_invoice"
+  status = 200
+
+# 2. Proxy /api/ to function
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/process_invoice"
+  status = 200
+
+# 3. SPA Fallback - Must be last
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
   status = 200
 
 [[headers]]
@@ -17,6 +31,7 @@
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
 
+# Block access to source code
 [[redirects]]
   from = "/*.py"
   to = "/404.html"
