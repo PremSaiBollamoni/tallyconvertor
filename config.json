@@ -1,0 +1,33 @@
+{
+  "api_config": {
+    "api_key": "sGnexJYRzOzcMH3x2Rzg9CusBH11poeO",
+    "endpoint": "https://api.deepinfra.com/v1/openai/chat/completions",
+    "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "max_tokens": 4092,
+    "timeout": 30
+  },
+  
+  "tally_config": {
+    "voucher_type": "Sales",
+    "default_ledger": "Sales",
+    "date_format": "%d/%m/%Y",
+    "currency_symbol": "₹"
+  },
+  
+  "processing_config": {
+    "output_directory": "invoice_output",
+    "supported_formats": [".jpg", ".jpeg", ".png", ".pdf"],
+    "batch_processing": true,
+    "enable_logging": true,
+    "log_level": "INFO"
+  },
+  
+  "extraction_config": {
+    "extract_invoice_number": true,
+    "extract_date": true,
+    "extract_customer_name": true,
+    "extract_amount": true,
+    "extract_line_items": true,
+    "extract_currency": true
+  }
+}

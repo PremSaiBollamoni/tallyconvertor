@@ -1,0 +1,26 @@
+[build]
+  command = "pip install -r requirements.txt && streamlit config set client.showErrorDetails true && streamlit config set client.toolbarMode minimal"
+  functions = "functions"
+  publish = ".streamlit"
+
+[functions]
+  directory = "functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+
+[dev]
+  command = "streamlit run app.py"
+  port = 8501
+  targetPort = 8501
+  autoLaunch = true

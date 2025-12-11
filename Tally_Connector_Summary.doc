@@ -1,0 +1,104 @@
+Tally Connector — Invoice → Vision → JSON → Tally XML
+Date: December 11, 2025
+
+Project Summary
+
+Purpose:
+Build an end-to-end workflow to convert invoice images (PDF/JPG/PNG) into Tally-friendly vouchers by using a Vision LLM, structuring the extracted JSON, converting to Tally XML, and preparing files for TallyPrime import.
+
+Status:
+Completed (Day 1). All components implemented and tested locally.
+
+
+What was delivered
+
+1) Vision extraction module: invoice_extractor.py
+- Uses DeepInfra Llama model (meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8) to extract invoice_number, invoice_date, customer_name, amount, currency, and items.
+- Handles images encoded as base64 and markdown-wrapped JSON responses.
+- Error handling for network and file errors.
+
+2) JSON parser & pipeline: invoice_extractor.py + pipeline.py
+- pipeline.py orchestrates processing single files or directories, saving JSON and XML outputs, logging, and generating a summary report.
+- Supports .png, .jpg, .jpeg, .pdf.
+- UTF-8 safe outputs.
+
+3) Tally XML converter: tally_converter.py
+- Converts extracted JSON to Tally-compatible XML voucher(s).
+- Date format converted to DDMMYYYY; amounts converted to paisa (×100).
+- Generates double-entry ledger entries (Debit: customer, Credit: Sales) and bill allocations for line items.
+
+4) Utilities and artifacts
+- vision_test.py — original API test script (reference).
+- config.json — configuration template for API key, endpoint, model, and other settings.
+- invoice_output/ (generated)
+  - json/ — extracted JSON files (e.g., invoice_sample_extracted.json)
+  - xml/ — Tally XML files (e.g., voucher_IN-001.xml)
+  - processing_report.txt — summary report of runs
+- COMPLETION_REPORT.txt, QUICK_START.txt — reports and quick instructions.
+
+
+How to run (quick)
+
+1. Install dependency:
+   pip install requests
+
+2. Ensure API key is set in invoice_extractor.py (or update config.json).
+
+3. Run pipeline:
+   Single file:
+     python pipeline.py path\to\invoice.png
+   Directory:
+     python pipeline.py path\to\invoices\
+   Current folder:
+     python pipeline.py
+
+
+Outputs generated
+
+- invoice_output/json/<image>_extracted.json — extracted JSON per input file
+- invoice_output/xml/voucher_<invoice_number>.xml — Tally-compatible voucher XML
+- invoice_output/processing_report.txt — processing summary with counts and details
+
+
+Files created or updated (important)
+
+- invoice_extractor.py — extraction + parsing
+- tally_converter.py — JSON → Tally XML
+- pipeline.py — orchestration, batch processing, reporting
+- config.json — config template
+- COMPLETION_REPORT.txt, QUICK_START.txt — deliverables and quick guide
+- invoice_output/ — auto-created at runtime with JSON/XML/report
+
+
+Notes about Tally import
+
+The generated XML follows a Tally import envelope. You can import into TallyPrime via:
+- Manual Import: Gateway of Tally → Import Data → select XML
+- Programmatically: Use Tally API / RConsole or place files in the Tally import folder if your environment supports that.
+- Voucher type defaults to Sales (modify in tally_converter.py if required).
+
+
+Known caveats & small fixes applied
+
+- Resolved DNS/endpoint mismatch (switched to DeepInfra endpoint).
+- Handled markdown-wrapped JSON returned by the LLM (strip code fences then parse).
+- Fixed Windows console encoding warnings by switching markers to ASCII-safe tokens in logs and using UTF-8 for file writes.
+- Model name set to meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8 per team lead.
+
+
+Suggested next steps (Day 2+)
+
+- Automate Tally import: integrate TallyPrime API or RConsole to push XML automatically.
+- Add multi-page PDF support and OCR fallback for low-quality images.
+- Map invoice line items to inventory/ledger accounts automatically.
+- Add retries and rate-limit handling for the API.
+- Add persistent logging (file-based) or a small database for audit trails.
+- Build a small web dashboard for monitoring runs and manual correction UI.
+
+
+Contact & Notes
+
+If you want the document in true .docx format, I can generate one (requires python-docx) or I can provide the same text formatted for copy-paste into Word. If you prefer I can also remove any remaining .md files now — I recreated an `INDEX.md` earlier as a quick navigation file; tell me if you want it removed.
+
+
+End of summary
